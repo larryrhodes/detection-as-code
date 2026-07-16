@@ -1,0 +1,10 @@
+{
+  "rule": {
+    "mitre": {
+      "id": ["T1059.004"]
+    }
+  },
+  "agent": {
+    "name": "emulation-vm"
+  }
+}

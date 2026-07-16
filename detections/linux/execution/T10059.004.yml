@@ -1,0 +1,23 @@
+title: Unix Shell Execution
+id: T1059.004
+status: experimental
+description: Detects execution of commands via Unix shell on Linux endpoints
+author: larry_rhodes
+date: 2026/07/16
+tags:
+  - attack.execution
+  - attack.t1059.004
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection:
+    type: EXECVE
+    exe:
+      - /bin/bash
+      - /bin/sh
+      - /usr/bin/bash
+  condition: selection
+falsepositives:
+  - Normal system administration activity
+level: medium
