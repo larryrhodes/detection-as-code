@@ -14,13 +14,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
       - name: Install Python dependencies
         run: |
+          cd /Users/hiddengardens/projects/detection-as-code
+          source venv/bin/activate
           pip install requests python-dotenv urllib3
 
       - name: Set up SSH key
@@ -46,5 +43,7 @@ jobs:
           WAZUH_API_USER: ${{ secrets.WAZUH_API_USER }}
           WAZUH_API_PASS: ${{ secrets.WAZUH_API_PASS }}
         run: |
+          cd /Users/hiddengardens/projects/detection-as-code
+          source venv/bin/activate
           python3 wazuh-client/client/alert_validator.py \
             atomic-tests/linux/T1059.004/expected_alert.json
