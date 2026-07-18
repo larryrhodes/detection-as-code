@@ -1,0 +1,50 @@
+name: Test Detection Rules
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install requests python-dotenv urllib3
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/github_actions_key
+          chmod 600 ~/.ssh/github_actions_key
+          ssh-keyscan -H ${{ secrets.VM_SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Run Atomic test on Wazuh Node
+        run: |
+          ssh -i ~/.ssh/github_actions_key \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.VM_SSH_USER }}@${{ secrets.VM_SSH_HOST }} \
+            "sudo touch /etc/test-detection-cicd && sudo rm /etc/test-detection-cicd"
+
+      - name: Wait for alert to propagate
+        run: sleep 30
+
+      - name: Run alert validator
+        env:
+          WAZUH_API_URL: ${{ secrets.WAZUH_API_URL }}
+          WAZUH_API_USER: ${{ secrets.WAZUH_API_USER }}
+          WAZUH_API_PASS: ${{ secrets.WAZUH_API_PASS }}
+        run: |
+          python3 wazuh-client/client/alert_validator.py \
+            atomic-tests/linux/T1059.004/expected_alert.json
