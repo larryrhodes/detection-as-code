@@ -1,0 +1,35 @@
+name: Deploy Detection Rules
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'detections/**'
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Python dependencies
+        run: |
+          cd /Users/hiddengardens/projects/detection-as-code
+          source venv/bin/activate
+          pip install requests python-dotenv urllib3
+
+      - name: Deploy rules to Wazuh
+        env:
+          WAZUH_API_URL: ${{ secrets.WAZUH_API_URL }}
+          WAZUH_API_USER: ${{ secrets.WAZUH_API_USER }}
+          WAZUH_API_PASS: ${{ secrets.WAZUH_API_PASS }}
+        run: |
+          cd /Users/hiddengardens/projects/detection-as-code
+          source venv/bin/activate
+          python3 wazuh-client/scripts/deploy_rules.py
+
+      - name: Notify deployment complete
+        run: |
+          echo "✅ Detection rules deployed successfully to Wazuh at ${{ secrets.WAZUH_API_URL }}"
