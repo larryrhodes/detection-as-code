@@ -47,4 +47,3 @@ fields:
   - audit.execve.a2
   - audit.auid
   - audit.pid
-  
