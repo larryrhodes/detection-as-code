@@ -1,0 +1,162 @@
+name: Nightly Regression
+
+on:
+  schedule:
+    # Runs at 02:00 UTC every night
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      technique:
+        description: 'Run a single technique (e.g. T1105) or "all"'
+        required: false
+        default: 'all'
+
+jobs:
+  regression:
+    name: Validate All Detections
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd wazuh-client
+          pip install -r requirements.txt
+
+      - name: Discover atomic tests
+        id: discover
+        run: |
+          # Build a JSON list of all technique IDs from atomic-tests/linux/
+          TECHNIQUES=$(find atomic-tests/linux -name "expected_alert.json" \
+            | sed 's|atomic-tests/linux/||; s|/expected_alert.json||' \
+            | sort | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "techniques=$TECHNIQUES" >> $GITHUB_OUTPUT
+          echo "Discovered techniques: $TECHNIQUES"
+
+      - name: Fire atomic tests on emulation VM
+        env:
+          VM_HOST: ${{ secrets.VM_SSH_HOST }}
+          VM_USER: ${{ secrets.VM_SSH_USER }}
+          SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/regression_key
+          chmod 600 ~/.ssh/regression_key
+
+          TECHNIQUES='${{ steps.discover.outputs.techniques }}'
+
+          for TECH in $(echo "$TECHNIQUES" | jq -r '.[]'); do
+            EXPECTED="atomic-tests/linux/$TECH/expected_alert.json"
+            CMD=$(jq -r '.atomic_command' "$EXPECTED")
+            CLEANUP=$(jq -r '.cleanup_command // empty' "$EXPECTED")
+
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Firing atomic test: $TECH"
+            echo "Command: $CMD"
+
+            ssh -i ~/.ssh/regression_key \
+              -o StrictHostKeyChecking=no \
+              "$VM_USER@$VM_HOST" "$CMD"
+
+            # Give Wazuh time to process the event
+            sleep 15
+
+            if [ -n "$CLEANUP" ]; then
+              ssh -i ~/.ssh/regression_key \
+                -o StrictHostKeyChecking=no \
+                "$VM_USER@$VM_HOST" "$CLEANUP" || true
+            fi
+          done
+
+      - name: Validate all alerts
+        env:
+          WAZUH_API_URL: ${{ secrets.WAZUH_API_URL }}
+          WAZUH_API_USER: ${{ secrets.WAZUH_API_USER }}
+          WAZUH_API_PASS: ${{ secrets.WAZUH_API_PASS }}
+        run: |
+          PASS=0
+          FAIL=0
+          RESULTS_JSON="[]"
+
+          for EXPECTED in atomic-tests/linux/*/expected_alert.json; do
+            TECH=$(echo "$EXPECTED" | cut -d'/' -f3)
+            echo "Validating: $TECH"
+
+            set +e
+            python wazuh-client/client/alert_validator.py \
+              --expected "$EXPECTED" \
+              --output "regression_${TECH}.json"
+            STATUS=$?
+            set -e
+
+            if [ $STATUS -eq 0 ]; then
+              echo "  ✅ PASS: $TECH"
+              PASS=$((PASS + 1))
+              RESULT="{\"technique\":\"$TECH\",\"status\":\"pass\"}"
+            else
+              echo "  ❌ FAIL: $TECH"
+              FAIL=$((FAIL + 1))
+              RESULT="{\"technique\":\"$TECH\",\"status\":\"fail\"}"
+            fi
+
+            RESULTS_JSON=$(echo "$RESULTS_JSON" | jq ". += [$RESULT]")
+          done
+
+          TOTAL=$((PASS + FAIL))
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Regression Results: $PASS/$TOTAL passed"
+
+          # Write summary for report generator
+          echo "{\"run_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"total\":$TOTAL,\"pass\":$PASS,\"fail\":$FAIL,\"results\":$RESULTS_JSON}" \
+            > regression_summary.json
+
+          # Fail the workflow if any detection regressed
+          if [ $FAIL -gt 0 ]; then
+            echo "::error::$FAIL detection(s) failed regression — investigate before merging new rules."
+            exit 1
+          fi
+
+      - name: Generate regression report
+        if: always()
+        env:
+          WAZUH_API_URL: ${{ secrets.WAZUH_API_URL }}
+          WAZUH_API_USER: ${{ secrets.WAZUH_API_USER }}
+          WAZUH_API_PASS: ${{ secrets.WAZUH_API_PASS }}
+        run: |
+          python scripts/generate_report.py \
+            --input regression_summary.json \
+            --output-json reports/regression_$(date +%Y%m%d).json \
+            --output-html reports/regression_$(date +%Y%m%d).html
+
+      - name: Upload regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-report-${{ github.run_number }}
+          path: reports/
+          retention-days: 30
+
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -f regression_summary.json ]; then
+            PASS=$(jq '.pass' regression_summary.json)
+            FAIL=$(jq '.fail' regression_summary.json)
+            TOTAL=$(jq '.total' regression_summary.json)
+            echo "## 🔍 Nightly Regression — $(date +%Y-%m-%d)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Result | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| ✅ Pass | $PASS |" >> $GITHUB_STEP_SUMMARY
+            echo "| ❌ Fail | $FAIL |" >> $GITHUB_STEP_SUMMARY
+            echo "| **Total** | **$TOTAL** |" >> $GITHUB_STEP_SUMMARY
+          fi
