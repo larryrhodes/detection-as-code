@@ -1,0 +1,22 @@
+title: Valid Account Abuse
+id: T1078
+status: experimental
+description: This detects the abuse of credentials of existing accounts as a means of gaining initial access.
+references:
+  - https://attack.mitre.org/techniques/T1078/
+author: Larry Rhodes
+date: 2026-07-21
+tags:
+  - attack.defense_evasion
+  - attack.t1078
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection:
+    type: EXECVE
+    a0: sudo
+  condition: selection
+falsepositives:
+  - Legitimate account escalation activity for permitted operations. 
+level: high

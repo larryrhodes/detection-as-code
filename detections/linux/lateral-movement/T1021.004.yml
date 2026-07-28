@@ -1,0 +1,22 @@
+title: [Human readable name]
+id: [TECHNIQUE-ID]
+status: experimental
+description: [What this detects]
+references:
+  - https://attack.mitre.org/techniques/[T####]/
+author: [Your name]
+date: [YYYY-MM-DD]
+tags:
+  - attack.[tactic_name]
+  - attack.[technique_id_lowercase]
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection:
+    type: EXECVE
+    a0|contains: [command or tool to detect]
+  condition: selection
+falsepositives:
+  - Legitimate admin activity
+level: high

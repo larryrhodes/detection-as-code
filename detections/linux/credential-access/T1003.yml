@@ -1,0 +1,23 @@
+title: OS Credential Dumping
+id: T1003
+status: experimental
+description: Adversaries dump stored account credentials—such as hashes or plaintext passwords—from system memory and caches to escalate access and move laterally through a network.
+references:
+  - https://attack.mitre.org/techniques/T1003/
+author: Larry Rhodes
+date: 2026-07-20
+tags:
+  - attack.credential_access
+  - attack.T1003
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection:
+    type: EXECVE
+    a0: cat
+    a1|contains: /etc/shadow
+  condition: selection
+falsepositives:
+  - False positives typically occur when legitimate administrative software—such as IT diagnostics, backup utilities, endpoint security agents, or authorized penetration testing tools—access system memory or security registry hives in the same manner an adversary would.
+level: high
