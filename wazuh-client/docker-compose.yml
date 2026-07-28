@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # Deploy rules to Wazuh
+  deploy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: detection-as-code/wazuh-client:latest
+    command: ["scripts/deploy_rules.py", "--rules-dir", "/rules"]
+    environment:
+      - WAZUH_API_URL=${WAZUH_API_URL}
+      - WAZUH_API_USER=${WAZUH_API_USER}
+      - WAZUH_API_PASS=${WAZUH_API_PASS}
+    volumes:
+      - ../detections:/rules:ro
+    network_mode: host  # Required to reach Wazuh at 10.211.55.6
+    restart: "no"
+
+  # Validate alerts after an atomic test
+  validate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: detection-as-code/wazuh-client:latest
+    command: ["client/alert_validator.py", "--expected", "/tests/expected_alert.json"]
+    environment:
+      - WAZUH_API_URL=${WAZUH_API_URL}
+      - WAZUH_API_USER=${WAZUH_API_USER}
+      - WAZUH_API_PASS=${WAZUH_API_PASS}
+    volumes:
+      - ../atomic-tests:/tests:ro
+    network_mode: host
+    restart: "no"
+
+  # Generate coverage report
+  report:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: detection-as-code/wazuh-client:latest
+    command: ["scripts/generate_report.py", "--coverage-only"]
+    environment:
+      - WAZUH_API_URL=${WAZUH_API_URL}
+      - WAZUH_API_USER=${WAZUH_API_USER}
+      - WAZUH_API_PASS=${WAZUH_API_PASS}
+    volumes:
+      - ..:/app/project:ro
+      - ../reports:/app/reports
+    network_mode: host
+    restart: "no"
