@@ -1,0 +1,18 @@
+{
+  "technique_id": "T1105",
+  "technique_name": "Ingress Tool Transfer",
+  "tactic": "command-and-control",
+  "description": "Detects curl or wget downloading a file to a staging directory (/tmp, /var/tmp, /dev/shm)",
+  "atomic_command": "curl -o /tmp/T1105_test_file.txt https://raw.githubusercontent.com/redcanaryco/atomic-red-team/master/LICENSE.txt",
+  "cleanup_command": "rm -f /tmp/T1105_test_file.txt",
+  "expected_fields": {
+    "rule.mitre.technique": "T1105",
+    "rule.mitre.tactic": "command-and-control",
+    "rule.level_min": 7,
+    "audit.execve.a0": "curl",
+    "audit.execve.a1": "-o",
+    "audit.execve.a2_contains": "/tmp/"
+  },
+  "search_window_seconds": 60,
+  "index_pattern": "wazuh-alerts-*"
+}
